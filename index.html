@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>0G Treasury Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --0g-black: #000000;
+    --0g-white: #FEFEFE;
+    --0g-gray: #E5E5E5;
+    --0g-purple: #9200E1;
+    --0g-purple-1: #B75FFF;
+    --0g-purple-2: #CB8AFF;
+    --0g-purple-3: #D5A3FF;
+    --0g-purple-4: #E3C1FF;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; background: #f7f5fa;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: #17141a;
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+  /* ---- Password gate ---- */
+  #gate {
+    position: fixed; inset: 0; background: var(--0g-black);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .gate-card {
+    background: var(--0g-white); border-radius: 14px; padding: 36px 32px;
+    width: 320px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .gate-logo { margin-bottom: 18px; display: flex; justify-content: center; }
+  .gate-card h1 { font-size: 16px; margin: 0 0 4px; font-weight: 600; }
+  .gate-card p { font-size: 12px; color: #8a8a8a; margin: 0 0 20px; }
+  .gate-card input {
+    width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--0g-gray);
+    font-size: 14px; margin-bottom: 10px; outline: none; text-align: center;
+  }
+  .gate-card input:focus { border-color: var(--0g-purple); }
+  .gate-card button {
+    width: 100%; padding: 11px; border: none; border-radius: 8px;
+    background: var(--0g-purple); color: var(--0g-white); font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .gate-card button:hover { background: #7c00bd; }
+  .gate-error { color: #dc2626; font-size: 12px; margin-top: 10px; min-height: 14px; }
+  .shake { animation: shake .3s; }
+  @keyframes shake {
+    25% { transform: translateX(-6px); } 75% { transform: translateX(6px); }
+  }
+
+  /* ---- Dashboard ---- */
+  #app { display: none; }
+  .topbar {
+    background: var(--0g-black); color: var(--0g-white);
+    padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .name { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+  .brand .tag { font-size: 11px; color: #b8b8b8; }
+  .asof { font-size: 12px; color: #cfcfcf; }
+
+  .content { max-width: 760px; margin: 0 auto; padding: 22px 20px 40px; }
+
+  .page-title { text-align: center; margin-bottom: 18px; }
+  .page-title h1 { font-size: 20px; margin: 0 0 2px; font-weight: 700; color: var(--0g-black); }
+  .page-title .sub { font-size: 13px; color: #7a7a7a; }
+
+  /* Tabs */
+  .tabs { display: flex; justify-content: center; margin-bottom: 20px; }
+  .tab-toggle {
+    display: inline-flex; background: #efe9f7; border-radius: 999px; padding: 4px; gap: 2px;
+  }
+  .tab-btn {
+    border: none; background: transparent; padding: 8px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; color: #6b6376; cursor: pointer; transition: all .15s;
+  }
+  .tab-btn.active { background: var(--0g-purple); color: var(--0g-white); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Fancy pivot table */
+  .pivot-card {
+    background: var(--0g-white); border-radius: 14px; padding: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(146,0,225,.06);
+    border: 1px solid var(--0g-gray); overflow: hidden;
+  }
+  table.pivot { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.pivot thead th {
+    background: var(--0g-black); color: var(--0g-white);
+    padding: 10px 12px; font-weight: 600; text-align: right; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .03em;
+  }
+  table.pivot thead th:first-child, table.pivot thead th:nth-child(2) { text-align: left; }
+  table.pivot td { padding: 7px 12px; text-align: right; border-bottom: 1px solid #f0eef3; }
+  table.pivot td:first-child, table.pivot td:nth-child(2) { text-align: left; }
+  table.pivot tbody tr.asset-row:hover { background: #faf6ff; }
+  table.pivot tr.type-row td {
+    background: var(--0g-purple-4); font-weight: 700; color: #4a007a;
+    padding-top: 9px; padding-bottom: 9px;
+  }
+  table.pivot tr.type-total-row td {
+    background: #f4ecff; font-weight: 700; border-top: 1px solid var(--0g-purple-2);
+    border-bottom: 2px solid var(--0g-purple-2);
+  }
+  table.pivot tr.grand-row td {
+    background: var(--0g-black); color: var(--0g-white); font-weight: 700; font-size: 13px;
+    padding-top: 10px; padding-bottom: 10px;
+  }
+  table.pivot td.asset-name { padding-left: 20px; color: #4b4b4b; }
+  table.pivot td.type-name { color: #4b4b4b; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; margin-bottom: 4px; }
+  .kpi {
+    background: var(--0g-white); border: 1px solid var(--0g-gray); border-radius: 10px; padding: 12px;
+    border-top: 3px solid var(--0g-purple);
+  }
+  .kpi .label { font-size: 10.5px; color: #7a7a7a; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .kpi .value { font-size: 18px; font-weight: 700; color: var(--0g-black); }
+  .kpi .sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+  .kpi .change { font-size: 11px; margin-top: 2px; font-weight: 600; }
+  .change.flat { color: #9ca3af; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card { background: var(--0g-white); border: 1px solid var(--0g-gray); border-radius: 10px; padding: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px 0; font-weight: 600; color: #374151; }
+  .chart-wrap { position: relative; height: 200px; }
+
+  .note { font-size: 11.5px; color: #9ca3af; margin-top: 14px; line-height: 1.5; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-logo">
+      <img src="data:image/png;base64,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" alt="0G logo" style="height:36px;width:auto;" />
+    </div>
+    <h1>Treasury Dashboard</h1>
+    <p>Enter password to continue</p>
+    <input type="password" id="pw" placeholder="Password" autocomplete="off" />
+    <button id="unlock">Unlock</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<div id="app">
+  <h2 class="sr-only">0G treasury dashboard showing cash and liquid crypto balances by entity and asset as of the latest snapshot, with a pivot table view and a charts view.</h2>
+  <div class="topbar">
+    <div class="brand">
+      <img src="data:image/png;base64,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" alt="0G logo" style="height:26px;width:auto;" />
+      <div>
+        <div class="name">0G Treasury Dashboard</div>
+        <div class="tag">The Blockchain for AI Agents</div>
+      </div>
+    </div>
+    <div class="asof" id="asof"></div>
+  </div>
+
+  <div class="content">
+    <div class="page-title">
+      <h1 id="pageTitle">0G Treasury</h1>
+      <div class="sub" id="pageSub"></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab-toggle">
+        <button class="tab-btn active" data-tab="table">Table</button>
+        <button class="tab-btn" data-tab="charts">Charts</button>
+      </div>
+    </div>
+
+    <div class="tab-panel active" id="panel-table">
+      <div class="pivot-card">
+        <table class="pivot">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Asset</th>
+              <th>Foundation</th>
+              <th>Labs</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="pivotBody"></tbody>
+        </table>
+      </div>
+      <div class="note" id="footnote"></div>
+    </div>
+
+    <div class="tab-panel" id="panel-charts">
+      <div class="kpi-row" id="kpiRow"></div>
+      <div class="grid-2" style="margin-top:14px;">
+        <div class="card">
+          <h2>Allocation by Asset Type</h2>
+          <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Allocation by Entity</h2>
+          <div class="chart-wrap"><canvas id="entityChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Password gate ----
+const PASSWORD = "0g@2026";
+function tryUnlock() {
+  const val = document.getElementById("pw").value;
+  if (val === PASSWORD) {
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("app").style.display = "block";
+  } else {
+    const card = document.querySelector(".gate-card");
+    document.getElementById("gateError").textContent = "Incorrect password.";
+    card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
+  }
+}
+document.getElementById("unlock").addEventListener("click", tryUnlock);
+document.getElementById("pw").addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
+
+// ---- Tabs ----
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---- Data layer: canonical rows, one per Type/Entity/Asset per snapshot date ----
+// Mirrors the "Raw Data" tab in Treasury_Report.xlsx. When live connectors are wired up,
+// this array is replaced by a callMcpTool() fetch — the rest of the page (table, KPIs,
+// charts) does not need to change.
+const SNAPSHOTS = {
+  "2026-07-27": [
+    { type: "Cash & Cash Equivalents", entity: "Foundation", asset: "Stablecoins - USDC", amount: 5390522, value: 5534414 },
+    { type: "Cash & Cash Equivalents", entity: "Foundation", asset: "Stablecoins - USDT", amount: 1003117, value: 1002050 },
+    { type: "Cash & Cash Equivalents", entity: "Foundation", asset: "Stablecoins due from Clout", amount: 1000000, value: 1000000 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Invest Edge", amount: 8000000, value: 8000000 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Invest Re7", amount: 2000000, value: 2000000 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Invest T-Bills Meow", amount: 1000000, value: 1000000 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Stablecoins - Coinbase", amount: 1000000, value: 1000000 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Stablecoins - Other", amount: 15338, value: 15338 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Stablecoins - USDC", amount: 1100816, value: 1100735 },
+    { type: "Cash & Cash Equivalents", entity: "Labs", asset: "Stablecoins - USDT", amount: 1081398, value: 1082216 },
+    { type: "Liquid Crypto", entity: "Foundation", asset: "Other Crypto Assets", amount: 336986, value: 248772 },
+    { type: "Liquid Crypto", entity: "Labs", asset: "Other Crypto Assets", amount: 5627, value: 15188 }
+  ]
+  // Add future dates here, e.g. "2026-07-28": [ ... ], to unlock day-over-day change.
+};
+
+const dates = Object.keys(SNAPSHOTS).sort();
+const currentDate = dates[dates.length - 1];
+const prevDate = dates.length > 1 ? dates[dates.length - 2] : null;
+const rows = SNAPSHOTS[currentDate];
+const prevRows = prevDate ? SNAPSHOTS[prevDate] : null;
+
+const fmt = n => "$" + Math.round(n).toLocaleString("en-US");
+const sum = (arr, pred) => arr.filter(pred).reduce((s, r) => s + r.value, 0);
+
+function formatDateLong(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+document.getElementById("pageSub").textContent = "As of " + formatDateLong(currentDate);
+document.getElementById("asof").textContent = "As of " + currentDate + (prevDate ? " · vs " + prevDate : "");
+
+const grandTotal = sum(rows, () => true);
+const cceTotal = sum(rows, r => r.type === "Cash & Cash Equivalents");
+const lcTotal = sum(rows, r => r.type === "Liquid Crypto");
+const foundationTotal = sum(rows, r => r.entity === "Foundation");
+const labsTotal = sum(rows, r => r.entity === "Labs");
+const prevGrandTotal = prevRows ? sum(prevRows, () => true) : null;
+
+// ---- Build pivot: Type -> Asset -> {Foundation, Labs, Total} ----
+const TYPE_ORDER = ["Cash & Cash Equivalents", "Liquid Crypto"];
+const pivot = {};
+rows.forEach(r => {
+  pivot[r.type] = pivot[r.type] || {};
+  pivot[r.type][r.asset] = pivot[r.type][r.asset] || { Foundation: 0, Labs: 0 };
+  pivot[r.type][r.asset][r.entity] = (pivot[r.type][r.asset][r.entity] || 0) + r.value;
+});
+
+let pivotHtml = "";
+let grandFoundation = 0, grandLabs = 0;
+TYPE_ORDER.filter(t => pivot[t]).forEach(type => {
+  const assets = pivot[type];
+  pivotHtml += `<tr class="type-row"><td colspan="5">${type}</td></tr>`;
+  let typeFoundation = 0, typeLabs = 0;
+  Object.keys(assets).forEach(asset => {
+    const f = assets[asset].Foundation || 0;
+    const l = assets[asset].Labs || 0;
+    typeFoundation += f; typeLabs += l;
+    pivotHtml += `<tr class="asset-row">
+      <td></td>
+      <td class="asset-name">${asset}</td>
+      <td>${f ? fmt(f) : "—"}</td>
+      <td>${l ? fmt(l) : "—"}</td>
+      <td><strong>${fmt(f + l)}</strong></td>
+    </tr>`;
+  });
+  grandFoundation += typeFoundation; grandLabs += typeLabs;
+  pivotHtml += `<tr class="type-total-row">
+    <td colspan="2">${type} Total</td>
+    <td>${fmt(typeFoundation)}</td>
+    <td>${fmt(typeLabs)}</td>
+    <td>${fmt(typeFoundation + typeLabs)}</td>
+  </tr>`;
+});
+pivotHtml += `<tr class="grand-row">
+  <td colspan="2">Grand Total</td>
+  <td>${fmt(grandFoundation)}</td>
+  <td>${fmt(grandLabs)}</td>
+  <td>${fmt(grandFoundation + grandLabs)}</td>
+</tr>`;
+document.getElementById("pivotBody").innerHTML = pivotHtml;
+
+document.getElementById("footnote").textContent = prevDate
+  ? "Figures as of " + currentDate + ". Add a new dated snapshot to SNAPSHOTS to track day-over-day change."
+  : "Only one snapshot exists so far — add a second dated snapshot to SNAPSHOTS to enable day-over-day change tracking.";
+
+// ---- KPIs (Charts tab) ----
+function changeHtml(cur, prev) {
+  if (prev === null) return '<div class="change flat">No prior snapshot</div>';
+  const diff = cur - prev;
+  const pct = prev !== 0 ? (diff / prev * 100) : 0;
+  const sign = diff > 0 ? "+" : diff < 0 ? "" : "";
+  const color = diff > 0 ? "#059669" : diff < 0 ? "#dc2626" : "#9ca3af";
+  return `<div class="change" style="color:${color}">${sign}${fmt(diff)} (${sign}${pct.toFixed(1)}%)</div>`;
+}
+const kpis = [
+  { label: "Grand Total", value: fmt(grandTotal), change: changeHtml(grandTotal, prevGrandTotal) },
+  { label: "Cash & Cash Equiv.", value: fmt(cceTotal), sub: (cceTotal/grandTotal*100).toFixed(1) + "% of total" },
+  { label: "Liquid Crypto", value: fmt(lcTotal), sub: (lcTotal/grandTotal*100).toFixed(1) + "% of total" },
+  { label: "Foundation", value: fmt(foundationTotal), sub: (foundationTotal/grandTotal*100).toFixed(1) + "% of total" },
+  { label: "Labs", value: fmt(labsTotal), sub: (labsTotal/grandTotal*100).toFixed(1) + "% of total" }
+];
+document.getElementById("kpiRow").innerHTML = kpis.map(k => `
+  <div class="kpi">
+    <div class="label">${k.label}</div>
+    <div class="value">${k.value}</div>
+    ${k.sub ? `<div class="sub">${k.sub}</div>` : ""}
+    ${k.change || ""}
+  </div>
+`).join("");
+
+const PALETTE = ["#9200E1", "#B75FFF", "#CB8AFF", "#D5A3FF", "#E3C1FF", "#000000"];
+
+new Chart(document.getElementById("typeChart"), {
+  type: "doughnut",
+  data: {
+    labels: ["Cash & Cash Equivalents", "Liquid Crypto"],
+    datasets: [{ data: [cceTotal, lcTotal], backgroundColor: [PALETTE[0], PALETTE[2]], borderWidth: 0 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: "bottom", labels: { font: { size: 11 } } } }
+  }
+});
+
+new Chart(document.getElementById("entityChart"), {
+  type: "doughnut",
+  data: {
+    labels: ["Foundation", "Labs"],
+    datasets: [{ data: [foundationTotal, labsTotal], backgroundColor: [PALETTE[1], PALETTE[3]], borderWidth: 0 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: "bottom", labels: { font: { size: 11 } } } }
+  }
+});
+</script>
+</body>
+</html>
