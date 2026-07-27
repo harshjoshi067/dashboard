@@ -26,6 +26,3 @@ It usually takes 1–2 minutes to go live after the first push.
 
 Open `index.html`, find the `SNAPSHOTS` object near the top of the `<script>` block, and add a new dated entry (e.g. `"2026-07-28": [ ... ]`) following the same structure as the existing one. Commit and push — day-over-day change appears automatically once two dates exist.
 
-## Password
-
-Current password: `0g@2026` (set in `const PASSWORD = ...` in `index.html`). Change it there before pushing if you want a different one — remember this repo is public, so treat the password as a light deterrent, not real security.
